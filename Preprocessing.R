@@ -119,3 +119,27 @@ plot(train_year_price$year_of_completion, train_year_price$price) # 이상치 �
 train_year_price[which(train_year_price$price == max(train_year_price$price)), ] # 1973년도
 boxplot(transaction_real_price ~ year_of_completion, data = cp_train) # boxplot을 통해 분포 파악
 View(train_year_price)
+
+
+# Same apartment type (테스트 중)
+cp_train$city <- NULL
+head(cp_train)
+apart_5584 <- cp_train %>% filter(apartment_id == 5584) # bathroom_count에 따라 가격이 달라짐
+apart_5584$heat_fuel <- NULL
+apart_5584$heat_type <- NULL
+apart_5584$total_parking_capacity_in_site <- NULL
+apart_5584$total_household_count_in_sites <- NULL
+apart_5584$tallest_building_in_sites <- NULL
+apart_5584$lowest_building_in_sites <- NULL
+apart_5584$apartment_building_count_in_sites <- NULL
+apart_5584$year_of_completion <- NULL
+apart_5584$front_door_structure <- NULL
+apart_5584$address_by_law <- NULL
+apart_5584$longitude <- NULL
+apart_5584$latitude <- NULL
+apart_5584$apartment_id <- NULL
+# transaction_year_month, floor 차이에 따라 가격이 달라짐 (하지만 정비례 하지 않음)
+unique(apart_5584$longitude)
+head(apart_5584, 10)
+
+apart_2816 <- cp_train %>% filter(apartment_id == 2816) # bathroom_count에 따라 가격이 달라짐
