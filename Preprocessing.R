@@ -59,6 +59,7 @@
 library(dplyr)
 library(Hmisc)
 library(lubridate)
+library(foreach)
 
 # 데이터 읽어 오기
 submisson <- read.csv("submission.csv")
@@ -122,24 +123,29 @@ View(train_year_price)
 
 
 # Same apartment type (테스트 중)
+uniquedeletefunction <- function(dataframe){
+  
+  deletecolumn <- foreach(i = 1 : dim(dataframe)[2], .combine = c) %do% {
+    if(length(unique(dataframe[, i])) == 1){
+      return (i)
+    }
+  }
+  dataframe[, deletcolumn] <- NULL
+  
+  return (dataframe)
+}
 cp_train$city <- NULL
-head(cp_train)
 apart_5584 <- cp_train %>% filter(apartment_id == 5584) # bathroom_count에 따라 가격이 달라짐
-apart_5584$heat_fuel <- NULL
-apart_5584$heat_type <- NULL
-apart_5584$total_parking_capacity_in_site <- NULL
-apart_5584$total_household_count_in_sites <- NULL
-apart_5584$tallest_building_in_sites <- NULL
-apart_5584$lowest_building_in_sites <- NULL
-apart_5584$apartment_building_count_in_sites <- NULL
-apart_5584$year_of_completion <- NULL
-apart_5584$front_door_structure <- NULL
-apart_5584$address_by_law <- NULL
-apart_5584$longitude <- NULL
-apart_5584$latitude <- NULL
-apart_5584$apartment_id <- NULL
-# transaction_year_month, floor 차이에 따라 가격이 달라짐 (하지만 정비례 하지 않음)
-unique(apart_5584$longitude)
+apart_5584 <- uniquedeletefunction(apart_5584)
 head(apart_5584, 10)
 
+apart_5584 %>% arrange(exclusive_use_area, floor) %>% head(10) # 실거래가 날짜 영향을 미침
+describe(apart_5584)
+
+
 apart_2816 <- cp_train %>% filter(apartment_id == 2816) # bathroom_count에 따라 가격이 달라짐
+apart_2816 <- uniquedeletefunction(apart_2816)
+
+describe(apart_2816)
+head(apart_2816, 10)
+length(unique(apart_2816[, 23]))
