@@ -56,19 +56,21 @@
 # address_by_law : 법정동코드(앞2자리 : 시/도, 앞5자리 : 시/군/구, 앞8자리 : 읍/면/동)
 
 # Start ----
+library(ggplot2)
 library(dplyr)
 library(Hmisc)
 library(lubridate)
 library(foreach)
+library(data.table)
 
 # 데이터 읽어 오기
 submisson <- read.csv("submission.csv")
 test <- read.csv("test.csv")
-train <- read.csv("train.csv")
+train <- fread("train.csv", stringsAsFactors = T, data.table = F)
 school <- read.csv("Schools.csv")
 subway <- read.csv("Subways.csv")
 cp_train <- train
-options(scipen = 10)
+options(scipen = 1)
 
 # address_by_law를 통해서 서울 / 부산 알 수 있으므로 city column 제거
 cp_train$city <- NULL
@@ -149,3 +151,46 @@ apart_2816 <- uniquedeletefunction(apart_2816)
 describe(apart_2816)
 head(apart_2816, 10)
 length(unique(apart_2816[, 23]))
+
+
+# 12.08
+cp_train$city <- NULL
+cp_train$year <- substr(cp_train$transaction_year_month, 1, 4)
+cp_train$month <- substr(cp_train$transaction_year_month, 5, 6)
+cp_train$transaction_year_month <- NULL
+table(cp_train$front_door_structure)
+cp_train[cp_train == ""] <- NA
+table(cp_train$front_door_structure, useNA = "always")
+train_front_bar <- cp_train %>% filter(front_door_structure == "-")
+cp_train %>% filter(apartment_id == "6198") %>% select(front_door_structure) %>% table(useNA = "always")
+cp_train %>% filter(apartment_id == "6198") %>% arrange(front_door_structure) %>% tail(10)
+cp_train[which(cp_train$apartment_id == "6198" & cp_train$front_door_structure %in% c(NA, "-")), 
+         "front_door_structure"] <- "corridor" # 5개를 제외하고 모두 corridor. 
+cp_train %>% filter(apartment_id == "34724") %>% nrow() # 해당 아파트는 전부 front_door_structure가
+                                                        # '-'로 입력되어있다. 삭제
+cp_train <- cp_train %>% filter(front_door_structure != "-")
+cp_train$front_door_structure <- as.factor(cp_train$front_door_structure)
+boxplot(transaction_real_price ~ front_door_structure, data = cp_train, notch = T) # 안그려진다.
+table(cp_train$front_door_structure, useNA = "always")
+head(cp_train)
+str(cp_train)
+describe(cp_train)
+
+# Subway - 보통 역세권이면 가격이 높다.
+# train과 Subway를 조인할 수 있는 방법 : 경도, 위도 / 법정동코드
+describe(subway) # NA 9개 모두 address_by_law에 위치
+subway_na <- subway[which(is.na(subway$address_by_law)), ]
+# address_by_law를 채워넣기(경도, 위도를 찾아서)
+cp_train <- cp_train %>% arrange(desc(latitude), longitude)
+subway_na <- subway_na %>% arrange(desc(latitude), longitude)
+summary(cp_train$longitude)
+i <- 1
+subway_train <- foreach(j = 1 : dim(cp_train)[1], .combine = rbind) %do% { # 채워넣어줘야 함
+  if(i == (dim(subway_na)[1] + 1))
+    break;
+  if(cp_train[j, "latitude"] == subway_na[i, "latitude"] &
+     cp_train[j, "longitude"] == subway_na[i, "longitude"]){
+    i <<- i + 1
+    return (cp_train[j, ])
+  }
+}
