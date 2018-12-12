@@ -70,7 +70,7 @@ train <- fread("train.csv", stringsAsFactors = T, data.table = F)
 school <- read.csv("Schools.csv")
 subway <- read.csv("Subways.csv")
 cp_train <- train
-options(scipen = 1)
+options(scipen = 10)
 
 # address_by_law를 통해서 서울 / 부산 알 수 있으므로 city column 제거
 cp_train$city <- NULL
@@ -184,13 +184,28 @@ subway_na <- subway[which(is.na(subway$address_by_law)), ]
 cp_train <- cp_train %>% arrange(desc(latitude), longitude)
 subway_na <- subway_na %>% arrange(desc(latitude), longitude)
 summary(cp_train$longitude)
-i <- 1
-subway_train <- foreach(j = 1 : dim(cp_train)[1], .combine = rbind) %do% { # 채워넣어줘야 함
-  if(i == (dim(subway_na)[1] + 1))
-    break;
-  if(cp_train[j, "latitude"] == subway_na[i, "latitude"] &
-     cp_train[j, "longitude"] == subway_na[i, "longitude"]){
-    i <<- i + 1
-    return (cp_train[j, ])
+# 구글맵 이용 url : https://www.google.co.kr/maps/
+# subway_na(순서대로) - id 300 도봉역(서울특별시 도봉구 도봉동) : 1132010800, 
+#                       id 135 망우역(서울특별시 중랑구 상봉동) : 1126010200, 
+#                       id 324 개화산역(서울특별시 강서구 방화동) : 1150010900, 
+#                       id 6   동대문역(서울특별시 종로구 창신동) : 1111017400,
+#                       id 342 청구역(서울특별시 중구 신당동) : 1114016200,
+#                       id 115 대방역(서울특별시 영등포구 신길동) : 1156013200, 
+#                       id 413 장승배기역(서울특별시 동작구 상도동) : 1159010200, 
+#                       id 32  교대역(서울특별시 서초구 서초동) : 1165010800, 
+#                       id 624 남산역(부산광역시 금정구 남산동) : 2641010400
+subway_na$address_by_law <- c(1132010800, 1126010200, 1150010900, 1111017400, 
+                              1114016200, 1156013200, 1159010200, 1165010800, 2641010400)
+str(subway_na)
+subway_na[, c(2 : 4)] <- NULL
+subway_na <- subway_na %>% arrange(station_id)
+j <- 1
+for(i in 1 : dim(subway)[1]){
+  if(subway_na[j, "station_id"] == subway[i, "station_id"]){
+    subway[i, "address_by_law"] <- subway_na[j, "address_by_law"]
+    j <<- j + 1
   }
+  if(j == (nrow(subway_na) + 1))
+    break
 }
+describe(subway)
