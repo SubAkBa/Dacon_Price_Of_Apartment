@@ -66,9 +66,9 @@ library(data.table)
 # 데이터 읽어 오기
 submisson <- read.csv("submission.csv")
 test <- read.csv("test.csv")
-train <- fread("train.csv", stringsAsFactors = T, data.table = F)
+train <- fread("train.csv", stringsAsFactors = F, data.table = F)
 school <- read.csv("Schools.csv")
-subway <- read.csv("Subways.csv")
+subway <- read.csv("Subways_rmNA.csv")
 cp_train <- train
 options(scipen = 10)
 
@@ -155,11 +155,14 @@ length(unique(apart_2816[, 23]))
 
 # 12.08
 cp_train$city <- NULL
-cp_train$year <- substr(cp_train$transaction_year_month, 1, 4)
-cp_train$month <- substr(cp_train$transaction_year_month, 5, 6)
+# divide year - month
+cp_train$transaction_year <- substr(cp_train$transaction_year_month, 1, 4)
+cp_train$transaction_month <- substr(cp_train$transaction_year_month, 5, 6)
 cp_train$transaction_year_month <- NULL
+colnames(cp_train)
+cp_train <- cp_train[, c(1, 2, 24, 25, 3 : 23)]
 table(cp_train$front_door_structure)
-cp_train[cp_train == ""] <- NA
+table(is.na(cp_train))
 table(cp_train$front_door_structure, useNA = "always")
 train_front_bar <- cp_train %>% filter(front_door_structure == "-")
 cp_train %>% filter(apartment_id == "6198") %>% select(front_door_structure) %>% table(useNA = "always")
@@ -209,3 +212,78 @@ for(i in 1 : dim(subway)[1]){
     break
 }
 describe(subway)
+write.csv(subway, "Subways_rmNA.csv", row.names = F)
+
+
+# 12.15
+head(cp_train)
+# latitude, longitude 사용하지 않고 address_by_law 사용
+cp_train$latitude <- NULL
+cp_train$longitude <- NULL
+cp_train[cp_train == ""] <- NA
+colnames(cp_train)
+describe(cp_train)
+xtabs(~ as.factor(heat_fuel) + as.factor(heat_type), data = cp_train)
+# bathroom / room count
+table(which(is.na(cp_train$bathroom_count)) == which(is.na(cp_train$room_count))) # NA자리 동일
+cp_train$transaction_real_price <- cp_train$transaction_real_price / 10000 # 크기가 커서 만원단위로
+str(cp_train)
+table(cp_train$room_count)
+table(cp_train$bathroom_count)
+room_price_train <- cp_train[-which(is.na(cp_train$room_count)), ]
+nrow(room_price_train)
+tapply(room_price_train$transaction_real_price,
+       as.factor(room_price_train$room_count), summary)
+boxplot(transaction_real_price ~ as.factor(room_count), data = room_price_train)
+                                                       # 방 갯수가 늘어날수록 가격이 높아진다.
+boxplot(transaction_real_price ~ as.factor(bathroom_count), data = room_price_train)
+                                                       # 화장실 갯수가 늘어날수록 가격이 높아진다.
+                                                       # NA들 삭제
+train2 <- room_price_train
+describe(train2)
+
+# lowest / tallest
+table(which(is.na(train2$lowest_building_in_sites)) 
+      == which(is.na(train2$tallest_building_in_sites))) # NA자리 동일
+na_low_tal_train <- train2[which(is.na(train2$lowest_building_in_sites)), ]
+                    # heat_type, fuel도 NA, apartmentid : 36339
+train2 %>% filter(apartment_id == 36339) %>% head()
+                  # apartment_id : 36339인 아파트는 모두 NA, 1121510400 / 서울특별시 광진구 광장동
+train2 %>% filter(address_by_law == 1121510400) %>% nrow() # 6950개, 총 데이터 갯수가 적지 않아 삭제
+train2 <- train2[-which(is.na(train2$lowest_building_in_sites)), ]
+describe(train2)
+
+# convert character to factor
+train2 <- train2 %>% mutate_if(sapply(train2, is.character), as.factor)
+str(train2)
+
+# front_door_structure
+train3 <- train2
+table(train3$front_door_structure)
+train3 %>% filter(front_door_structure == "-") # apartment_id   : 34724 - 20개, 6198 - 1개
+                                               # address_by_law : 2617010200  , 1156011000
+                                               # 부산광역시 동구 수정동, 서울특별시 영등포구 여의도동
+train3 %>% filter(apartment_id == 34724) # 이 아파트를 통해 알 수 있는것
+                                         # transaction_year, month, date, floor를 제외하고 모두 동일.
+train3 %>% filter(apartment_id == 34724) %>% 
+  select(transaction_year, transaction_month, transaction_date,
+         floor, transaction_real_price) %>% arrange(desc(transaction_real_price),
+                                                    desc(transaction_year),
+                                                    desc(transaction_month), desc(transaction_date))
+                                        # 결과로 봤을때 transaction_year, month, date는 
+                                        # 가격에 영향을 미친다.(데이터가 적은 것 고려해야함.)
+                                        # why?) ① 시간이 지날수록 돈의 가치가 하락.
+                                        #       ② 아파트 주변에 집세가 오를만한 조건들이 생성.
+train3 %>% filter(address_by_law == 2617010200) %>% nrow() # 226개
+train3 %>% filter(address_by_law == 2617010200) %>% select(apartment_id) %>% table()
+                                                    # 11100 : 184, 16725 : 22, 34724 : 20
+boxplot(transaction_real_price ~ front_door_structure, data = train3)
+                                 # count : mixed < corridor < stairway
+                                 # corridor : 복도식(70 ~ 80년대 대규모로 지어진 주공아파트들)
+                                 #            오피스텔은 중복도식
+                                 # stairway : 승강기를 중심으로 마주보는 현관구조
+                                 # mixed : 같은 층의 가구 이상이 승강기를 중심으로 배치.
+                                 #         타워형 아파트 설계 시 채택.
+summary(transaction_real_price ~ front_door_structure, data = train3) # NA가 있다. 결측치 처리
+door_na_train <- train3 %>% filter(is.na(front_door_structure))
+head(door_na_train) # 내일 할 것 : front_door_structure 결측치 처리.
