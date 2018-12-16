@@ -56,15 +56,18 @@
 # address_by_law : 법정동코드(앞2자리 : 시/도, 앞5자리 : 시/군/구, 앞8자리 : 읍/면/동)
 
 # Start ----
+library(caret)
+library(plyr)
 library(ggplot2)
 library(dplyr)
 library(Hmisc)
 library(lubridate)
 library(foreach)
 library(data.table)
+library(fastDummies)
 
 # 데이터 읽어 오기
-submisson <- read.csv("submission.csv")
+submission <- read.csv("submission.csv")
 test <- read.csv("test.csv")
 train <- fread("train.csv", stringsAsFactors = F, data.table = F)
 school <- read.csv("Schools.csv")
@@ -153,7 +156,7 @@ head(apart_2816, 10)
 length(unique(apart_2816[, 23]))
 
 
-# 12.08
+# 12.08 ----
 cp_train$city <- NULL
 # divide year - month
 cp_train$transaction_year <- substr(cp_train$transaction_year_month, 1, 4)
@@ -279,6 +282,7 @@ train3 %>% filter(address_by_law == 2617010200) %>% select(apartment_id) %>% tab
                                                     # 11100 : 184, 16725 : 22, 34724 : 20
 boxplot(transaction_real_price ~ front_door_structure, data = train3)
                                  # count : mixed < corridor < stairway
+                                 #         26085     415191    1146041
                                  # corridor : 복도식(70 ~ 80년대 대규모로 지어진 주공아파트들)
                                  #            오피스텔은 중복도식
                                  # stairway : 승강기를 중심으로 마주보는 현관구조
@@ -286,4 +290,74 @@ boxplot(transaction_real_price ~ front_door_structure, data = train3)
                                  #         타워형 아파트 설계 시 채택.
 summary(transaction_real_price ~ front_door_structure, data = train3) # NA가 있다. 결측치 처리
 door_na_train <- train3 %>% filter(is.na(front_door_structure))
-head(door_na_train) # 내일 할 것 : front_door_structure 결측치 처리.
+head(door_na_train)
+nrow(door_na_train)
+describe(door_na_train)
+plot(door_na_train$room_id) # 특정 구간들에 몰려있다.
+plot(door_na_train$apartment_id)
+head(unique(door_na_train$apartment_id)) # 5863 4047 4331 4321 2720 12188
+train3 %>% filter(apartment_id == 5863) %>% nrow() # 176개
+all_5863 <- train3 %>% filter(apartment_id == 5863)
+describe(all_5863) # 5863 -> address_by_law = 1130510100 서울특별시 강북구 미아동
+View(all_5863) # apartmend_id = 5863중 room_id = 93250인 것들만 front_door_structure = NA
+               # room_id = 93250을 가진 다른 아파트를 찾아보자.
+door_na_train %>% filter(apartment_id == 5863) %>% nrow() # 73개
+onlyna_5863 <- door_na_train %>% filter(apartment_id == 5863)
+View(onlyna_5863)
+train3 %>% filter(room_id == 93250) %>% nrow() # 위의 아파트를 제외하고 없다. 73개
+                                               # 동일한 apartment_id내 다른 
+                                               # front_door_structure를 가질수 있나?
+train3 %>% group_by(apartment_id, room_id, front_door_structure) %>% 
+  dplyr::summarise(n = n()) %>% View() # 가질 수 있다.
+                                       # 다른 apartment_id를 가지면서 동일한 room_id를 가질 수 있나?
+train3 %>% group_by(apartment_id, room_id) %>% dplyr::summarise(n = n()) %>% View()
+                                       # 가지지 않는다.
+                                       # front_door_structure 영향을 미치는 변수이며
+                                       # 결측치를 채울 수 있는 방법이 없다고 판단되어 삭제
+train4 <- train3 %>% filter(!is.na(front_door_structure))
+describe(train4) # 결측치 있는 column : total_parking_capacity_in_site / heat_type / heat_fuel
+type_na_train <- train4 %>% filter(is.na(heat_type))
+describe(type_na_train)
+head(type_na_train) # apartment_id = 33185
+all_33185 <- train4 %>% filter(apartment_id == 33185)
+View(all_33185)
+describe(all_33185) # apartment_id = 33185는 heat_type과 heat_fuel이 모두 NA
+                    # 일단 결측치를 모두 제거한 데이터를 가지고 회귀분석을 돌려보자.
+nona_train <- train4 %>% filter(!is.na(heat_fuel))
+nona_train <- nona_train %>% filter(!is.na(total_parking_capacity_in_site))
+table(is.na(nona_train))
+
+# Regression
+set.seed(137)
+str(nona_train)
+nona_train$address_by_law <- as.factor(nona_train$address_by_law)
+final_train <- nona_train[, c(2 : 9, 15, 16, 18, 20, 21, 22, 23)]
+final_train$room_count <- as.integer(final_train$room_count)
+final_train$bathroom_count <- as.integer(final_train$bathroom_count)
+final_train$transaction_real_price <- as.integer(final_train$transaction_real_price)
+final_train$address_by_law <- NULL
+str(final_train)
+datas <- dummy_cols(final_train, select_columns = c("transaction_year", "transaction_month", 
+                                           "transaction_date", "heat_type", "heat_fuel", 
+                                           "front_door_structure"),
+                    remove_first_dummy = T)
+str(datas)
+datas[, c(2 : 4, 8, 9, 13)] <- NULL
+datas <- datas %>% filter(`heat_fuel_-` == 0, `front_door_structure_-` == 0)
+colnames(datas)
+sample_idx <- createDataPartition(datas$apartment_id, p = 0.3)$Resample1
+apart_train <- datas[-sample_idx, ]
+apart_test <- datas[sample_idx, ]
+str(apart_train)
+rm(onlyna, onlyna_5863, type_na_train, sample_idx, all, all_33185, all_5863, crime,
+   door_na_train, room_price_train, train, train2, train3, train4, cp_train, 
+   final_train, nona_train); gc(reset = T)
+reg_model <- lm(transaction_real_price ~ -apartment_id + ., data = apart_train)
+summary(reg_model)
+reg_pre <- predict(reg_model, newdata = apart_train)
+fitted(reg_model)
+(reg_rmse <- RMSE(reg_pre, apart_train$transaction_real_price)) # 23940.65 * 10000
+                                                  # 다음에 해야 될 것.
+                                                  # 1. 처음부터 다시 돌아가서 결측치 및 이상치 처리
+                                                  # 2. School과 Subway 데이터 이용하기
+                                                  # 3. column 선정
