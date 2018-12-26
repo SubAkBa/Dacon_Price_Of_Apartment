@@ -20,6 +20,7 @@
 # tallest_building_in_sites : 아파트 단지내 최고층
 # lowest_building_in_sites : 아파트 단지내 최저층 동의 층수
 # heat_type : 난방방식 (개별난방[individual], 중앙난방[central], 지역난방[district])
+#             url = https://angelahyejin.blog.me/221052837874
 # heat_fuel : 난방연료 (도시가스[gas], 열병합[cogeneration])
 # room_id : 평형 ID(평형 = (전용면적m^2 + 주거공용면적m^2) * 0.3025)
 #                  (1평형 = 3.3058m^2)
@@ -55,6 +56,7 @@
 # foundation_date : 설립일
 # address_by_law : 법정동코드(앞2자리 : 시/도, 앞5자리 : 시/군/구, 앞8자리 : 읍/면/동)
 
+rm(list = ls()); gc(reset = T)
 # Start ----
 library(caret)
 library(plyr)
@@ -361,3 +363,41 @@ fitted(reg_model)
                                                   # 1. 처음부터 다시 돌아가서 결측치 및 이상치 처리
                                                   # 2. School과 Subway 데이터 이용하기
                                                   # 3. column 선정
+
+# 12.26
+# 결측치와 이상치 다루기
+# 1. 결측치 다루기 (subway 데이터는 위에서 처리 완료)
+head(cp_train)
+summary(cp_train)
+cp_train$transaction_real_price <- cp_train$transaction_real_price / 10000 # 만원단위로 변경
+cp_train$city <- NULL # address_by_law column으로 충분히 구분 가능하다.
+
+# (1) tallest_building_in_sites / lowest_building_in_sites
+which(is.na(cp_train$tallest_building_in_sites)) == which(is.na(cp_train$lowest_building_in_sites))
+sites_train <- cp_train[which(is.na(cp_train$tallest_building_in_sites)), ]
+cp_train <- cp_train[which(!is.na(cp_train$tallest_building_in_sites)), ]
+
+# (2) room_count / bathroom_count
+table(which(is.na(cp_train$room_count)) == which(is.na(cp_train$bathroom_count)))
+# 가) 제거
+cp_train2 <- cp_train[which(!is.na(cp_train$room_count)), ]
+# 나) 삽입 
+count_train <- cp_train[which(is.na(cp_train$room_count)), ]
+summary(count_train)
+count_train$apartment_id <- as.factor(count_train$apartment_id)
+count_train$front_door_structure <- as.factor(count_train$front_door_structure)
+count_train$room_id <- as.factor(count_train$room_id)
+count_train$heat_type <- as.factor(count_train$heat_type)
+count_train$heat_fuel <- as.factor(count_train$heat_fuel)
+count_train$address_by_law <- as.factor(count_train$address_by_law)
+View(count_train)
+
+# (3) heat_type / heat_fuel
+table(cp_train$heat_type)
+table(cp_train$heat_fuel)
+xtabs(~ heat_type + heat_fuel, data = cp_train)
+which(cp_train$heat_type == "")
+xtabs(~ heat_type + year_of_completion, data = cp_train) # 준공년도가 빠를 수록 중앙집중형?
+type_comple <- cp_train %>% group_by(year_of_completion, heat_type) %>% summarise(n = n())
+ggplot(type_comple, aes(x = year_of_completion, y = n, colour = heat_type)) + geom_line(cex = 1.5)
+                            # central은 거의 없다. individual은 갈수록 커진다.
