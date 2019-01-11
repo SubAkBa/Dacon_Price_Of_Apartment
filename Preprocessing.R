@@ -71,7 +71,7 @@ library(fastDummies)
 # 데이터 읽어 오기
 submission <- read.csv("submission.csv")
 test <- read.csv("test.csv")
-train <- fread("train.csv", stringsAsFactors = F, data.table = F)
+train <- fread("train.csv", stringsAsFactors = T, data.table = F)
 school <- read.csv("Schools.csv")
 subway <- read.csv("Subways_rmNA.csv")
 cp_train <- train
@@ -364,7 +364,7 @@ fitted(reg_model)
                                                   # 2. School과 Subway 데이터 이용하기
                                                   # 3. column 선정
 
-# 12.26
+# 12.26 / 1.11
 # 결측치와 이상치 다루기
 # 1. 결측치 다루기 (subway 데이터는 위에서 처리 완료)
 head(cp_train)
@@ -379,18 +379,7 @@ cp_train <- cp_train[which(!is.na(cp_train$tallest_building_in_sites)), ]
 
 # (2) room_count / bathroom_count
 table(which(is.na(cp_train$room_count)) == which(is.na(cp_train$bathroom_count)))
-# 가) 제거
-cp_train2 <- cp_train[which(!is.na(cp_train$room_count)), ]
-# 나) 삽입 
-count_train <- cp_train[which(is.na(cp_train$room_count)), ]
-summary(count_train)
-count_train$apartment_id <- as.factor(count_train$apartment_id)
-count_train$front_door_structure <- as.factor(count_train$front_door_structure)
-count_train$room_id <- as.factor(count_train$room_id)
-count_train$heat_type <- as.factor(count_train$heat_type)
-count_train$heat_fuel <- as.factor(count_train$heat_fuel)
-count_train$address_by_law <- as.factor(count_train$address_by_law)
-View(count_train)
+cp_train <- cp_train[which(!is.na(cp_train$room_count)), ]
 
 # (3) heat_type / heat_fuel
 table(cp_train$heat_type)
@@ -401,3 +390,31 @@ xtabs(~ heat_type + year_of_completion, data = cp_train) # 준공년도가 빠�
 type_comple <- cp_train %>% group_by(year_of_completion, heat_type) %>% summarise(n = n())
 ggplot(type_comple, aes(x = year_of_completion, y = n, colour = heat_type)) + geom_line(cex = 1.5)
                             # central은 거의 없다. individual은 갈수록 커진다.
+cp_train <- cp_train %>% filter(heat_type != "")
+cp_train <- cp_train %>% filter(!heat_fuel %in% c("", "-"))
+cp_train$heat_type <- factor(cp_train$heat_type)
+cp_train$heat_fuel <- factor(cp_train$heat_fuel)
+
+# (4) front_door_structure
+cp_train <- cp_train %>% filter(!front_door_structure %in% c("", "-"))
+cp_train$front_door_structure <- factor(cp_train$front_door_structure)
+
+# (5) total_parking_capacity_in_site
+cp_train <- cp_train %>% filter(!is.na(total_parking_capacity_in_site))
+summary(cp_train)
+
+# 2. 이상치 다루기
+area_type <- boxplot(cp_train$total_household_count_of_area_type)
+max(cp_train$total_household_count_of_area_type)
+train_2960 <- cp_train %>% filter(total_household_count_of_area_type == 2960) # 2960이 다른것들보다 높다. 이상치?
+describe(train_2960) # 날짜와 층, 가격만 다르다. 다른것은 모두 동일 / 2638010600 : 부산광역시 사하구 다대동
+train_2960 <- train_2960 %>% arrange(transaction_real_price)
+View(train_2960) # 이상치 No
+write.csv(cp_train, "train_1.csv", row.names = F)
+
+
+# 회귀모델 돌려본후 RMSE를 줄일 수 있는 방법 찾기
+# (1) 다중공선성
+# (2) 변수제거 또는 통합, 생성
+# (3) School과 Subway 데이터 이용
+# (4) 가능하다면 외부데이터 더 찾아보기
